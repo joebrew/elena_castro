@@ -3,7 +3,10 @@ library(sp)
 library(readr)
 library(dplyr)
 library(rgdal)
-
+library(ggplot2)
+library(rgeos)
+library(maptools)
+library(ggthemes)
 
 # Read in the spreadsheet with coordinates
 coordenadas <- read_csv('CoordenadasDistancia.csv')
@@ -82,14 +85,15 @@ moz <- getData(name = 'GADM', country = 'MOZ', level = 3)
 # Subset to only include maputo province
 map <-moz[moz@data$NAME_1 == 'Maputo',]
 # Projection
-proj4string(map) <- proj4string(coordenadas_spatial)
+# proj4string(map) <- proj4string(coordenadas_spatial)
+coordenadas_spatial <- spTransform(coordenadas_spatial, proj4string(map))
 # Keep only those polygons which have points
 polygons <- as.numeric(unique(sort(over(coordenadas_spatial, polygons(map)))))
 map <- map[polygons,]
 
 # Plot map with all the residence points
-par(mar = c(1,1,1,1))
-par(oma = c(0,0,0,0))
+# par(mar = c(1,1,1,1))
+# par(oma = c(0,0,0,0))
 plot(map,
      col = adjustcolor('black', alpha.f = 0.6),
      border = 'white')
@@ -110,12 +114,89 @@ legend(x = 'bottomleft',
        legend = c('People', 'Unidade sanitaria'),
        pt.cex = c(0.1, 1))
 
-# Loop through each point showing the distance
 
+# Plot map in which they are colored by distance
+map_gg <- fortify(map, region = 'OBJECTID')
+
+ggplot() +
+  geom_polygon(data = map_gg,
+               aes(x = long, 
+                   y = lat, 
+                   group = group),
+               alpha = 0.4,
+               fill = 'darkgreen') +
+  coord_map() +
+  geom_point(data = coordenadas,
+              aes(x = x,
+                  y = y,
+                  color = distance),
+             alpha = 0.5,
+             size = 0.5) +
+  geom_point(data = us,
+             aes(x = x, 
+                 y = y),
+             color = 'red',
+             pch = 17) +
+  theme_fivethirtyeight()
+
+# Export the data
+write_csv(coordenadas,
+          '~/Desktop/coordinates_and_distances_in_meters.csv')
+
+
+# Define function for adding zero
+add_zero <- function (x, n) {
+  x <- as.character(x)
+  adders <- n - nchar(x)
+  adders <- ifelse(adders < 0, 0, adders)
+  for (i in 1:length(x)) {
+    if (!is.na(x[i])) {
+      x[i] <- paste0(paste0(rep("0", adders[i]), collapse = ""), 
+                     x[i], collapse = "")
+    }
+  }
+  return(x)
+}
+
+# Loop through each point showing the distance
+setwd('~/Desktop')
+dir.create('elena')
+setwd('elena')
 plot(map)
+points(x = us$x_us,
+       y = us$y_us,
+       col = adjustcolor('red', alpha.f = 0.8),
+       pch = 17)
+
+# Reorder coordenadas
+coordenadas <- coordenadas[sample(1:nrow(coordenadas), nrow(coordenadas)),]
 for (i in 1:nrow(coordenadas)){
+  # get file number
+  file_number <- add_zero(i, 5)
+  png(filename = paste0(file_number, '.png'))
+  plot(map)
+  points(x = us$x_us,
+         y = us$y_us,
+         col = adjustcolor('red', alpha.f = 0.8),
+         pch = 17)
+  
   sub_data <- coordenadas[i,]  
+  
+  # Add sub data point
+  points(x = sub_data$lng,
+         y = sub_data$lat,
+         col = 'darkgreen',
+         pch = 1)
   lines(x = c(sub_data$lng, sub_data$lng_us),
          y = c(sub_data$lat, sub_data$lat_us),
-        col = adjustcolor('darkred', alpha.f = 0.6))
+        col = adjustcolor('darkgreen', alpha.f = 0.8))
+  
+  # Add sub data place in green
+  points(sub_data$lng_us,
+         sub_data$lat_us,
+         col = 'darkgreen',
+         pch = 17)
+  title(main = paste0(sub_data$name, '\n',
+                      'U.S.: ', sub_data$Unidade_Sanitaria))  
+  dev.off()
 }
