@@ -60,25 +60,62 @@ coordenadas$y_us <- coordenadas$lat_us <- ys*-1
 
 # Now everything is in the right format: lat/lng
 
+# MANUALLY enter in the true locations of the 
+# unidades_sanitarias
+unidades_sanitarias <- 
+  data.frame(name = c('Xinavane',
+                      '3 de fevereiro',
+                      'Iha Josina'),
+             lat = c("25'2'815",
+                     "25'9'43",
+                     "25'5'617"),
+             lng = c("32'48'308",
+                     "32'48'033",
+                     "32'55'035"),
+             stringsAsFactors = FALSE)
+# convert
+xs <- ys <- rep(NA, nrow(unidades_sanitarias))
+for (i in 1:nrow(unidades_sanitarias)){
+  message(i)
+  xs[i] <- convert_ll(unidades_sanitarias$lng[i])
+  ys[i] <- convert_ll(unidades_sanitarias$lat[i]) * -1
+}
+unidades_sanitarias$lng <- 
+  unidades_sanitarias$x <- 
+  xs
+unidades_sanitarias$lat <- 
+  unidades_sanitarias$y <- 
+  ys
+
+# convert unidades sanitarias to spatial
+unidades_sanitarias_spatial <- data.frame(unidades_sanitarias)
+coordinates(unidades_sanitarias_spatial) <- ~x + y
+proj4string(unidades_sanitarias_spatial) <- CRS("+proj=longlat")
+
 # Convert people locations to spatial
 coordenadas_spatial <- data.frame(coordenadas)
 coordinates(coordenadas_spatial) <- ~x+y
 proj4string(coordenadas_spatial) <- CRS("+proj=longlat")
 
-# Also get place US locations
-us_spatial <- data.frame(coordenadas)
-coordinates(us_spatial) <- ~x_us + y_us
-proj4string(us_spatial) <- CRS("+proj=longlat")
+# # Also get place US locations
+# us_spatial <- data.frame(coordenadas)
+# coordinates(us_spatial) <- ~x_us + y_us
+# proj4string(us_spatial) <- CRS("+proj=longlat")
 
 # Now calculate distance
 distances <- 
   spDists(x = coordenadas_spatial, 
-        y = us_spatial,
+        y = unidades_sanitarias_spatial,
         longlat = TRUE,
-        diagonal = TRUE)
+        diagonal = FALSE)
 
 # Add distances to coordenadas dataframe
-coordenadas$distance <- distances
+coordenadas$distance <- apply(distances, 1, function(x){x[which.min(x)]})
+
+# Get nearest center
+coordenadas$center <- 
+  apply(distances,
+        1, function(x){unidades_sanitarias$name[which.min(x)]})
 
 # Make a map of Mozambique
 moz <- getData(name = 'GADM', country = 'MOZ', level = 3)
@@ -103,9 +140,9 @@ points(x = coordenadas$lng,
        pch = 20,
        cex = 0.1)
 # Add the unique unidades sanitarias
-us <- coordenadas[!duplicated(coordenadas$Unidade_Sanitaria),]
-points(x = us$x_us,
-       y = us$y_us,
+# us <- coordenadas[!duplicated(coordenadas$Unidade_Sanitaria),]
+us <- unidades_sanitarias_spatial
+points(unidades_sanitarias_spatial,
        col = adjustcolor('darkgreen', alpha.f = 0.6),
        pch = 17)
 legend(x = 'bottomleft',
@@ -132,7 +169,7 @@ ggplot() +
                   color = distance),
              alpha = 0.5,
              size = 0.5) +
-  geom_point(data = us,
+  geom_point(data = data.frame(us),
              aes(x = x, 
                  y = y),
              color = 'red',
@@ -141,62 +178,62 @@ ggplot() +
 
 # Export the data
 write_csv(coordenadas,
-          '~/Desktop/coordinates_and_distances_in_meters.csv')
+          '~/Desktop/coordinates_distances_and_centers.csv')
 
 
-# Define function for adding zero
-add_zero <- function (x, n) {
-  x <- as.character(x)
-  adders <- n - nchar(x)
-  adders <- ifelse(adders < 0, 0, adders)
-  for (i in 1:length(x)) {
-    if (!is.na(x[i])) {
-      x[i] <- paste0(paste0(rep("0", adders[i]), collapse = ""), 
-                     x[i], collapse = "")
-    }
-  }
-  return(x)
-}
-
-# Loop through each point showing the distance
-setwd('~/Desktop')
-dir.create('elena')
-setwd('elena')
-plot(map)
-points(x = us$x_us,
-       y = us$y_us,
-       col = adjustcolor('red', alpha.f = 0.8),
-       pch = 17)
-
-# Reorder coordenadas
-coordenadas <- coordenadas[sample(1:nrow(coordenadas), nrow(coordenadas)),]
-for (i in 1:nrow(coordenadas)){
-  # get file number
-  file_number <- add_zero(i, 5)
-  png(filename = paste0(file_number, '.png'))
-  plot(map)
-  points(x = us$x_us,
-         y = us$y_us,
-         col = adjustcolor('red', alpha.f = 0.8),
-         pch = 17)
-  
-  sub_data <- coordenadas[i,]  
-  
-  # Add sub data point
-  points(x = sub_data$lng,
-         y = sub_data$lat,
-         col = 'darkgreen',
-         pch = 1)
-  lines(x = c(sub_data$lng, sub_data$lng_us),
-         y = c(sub_data$lat, sub_data$lat_us),
-        col = adjustcolor('darkgreen', alpha.f = 0.8))
-  
-  # Add sub data place in green
-  points(sub_data$lng_us,
-         sub_data$lat_us,
-         col = 'darkgreen',
-         pch = 17)
-  title(main = paste0(sub_data$name, '\n',
-                      'U.S.: ', sub_data$Unidade_Sanitaria))  
-  dev.off()
-}
+# # Define function for adding zero
+# add_zero <- function (x, n) {
+#   x <- as.character(x)
+#   adders <- n - nchar(x)
+#   adders <- ifelse(adders < 0, 0, adders)
+#   for (i in 1:length(x)) {
+#     if (!is.na(x[i])) {
+#       x[i] <- paste0(paste0(rep("0", adders[i]), collapse = ""), 
+#                      x[i], collapse = "")
+#     }
+#   }
+#   return(x)
+# }
+# 
+# # Loop through each point showing the distance
+# setwd('~/Desktop')
+# dir.create('elena')
+# setwd('elena')
+# plot(map)
+# points(x = us$x_us,
+#        y = us$y_us,
+#        col = adjustcolor('red', alpha.f = 0.8),
+#        pch = 17)
+# 
+# # Reorder coordenadas
+# coordenadas <- coordenadas[sample(1:nrow(coordenadas), nrow(coordenadas)),]
+# for (i in 1:nrow(coordenadas)){
+#   # get file number
+#   file_number <- add_zero(i, 5)
+#   png(filename = paste0(file_number, '.png'))
+#   plot(map)
+#   points(x = us$x_us,
+#          y = us$y_us,
+#          col = adjustcolor('red', alpha.f = 0.8),
+#          pch = 17)
+#   
+#   sub_data <- coordenadas[i,]  
+#   
+#   # Add sub data point
+#   points(x = sub_data$lng,
+#          y = sub_data$lat,
+#          col = 'darkgreen',
+#          pch = 1)
+#   lines(x = c(sub_data$lng, sub_data$lng_us),
+#          y = c(sub_data$lat, sub_data$lat_us),
+#         col = adjustcolor('darkgreen', alpha.f = 0.8))
+#   
+#   # Add sub data place in green
+#   points(sub_data$lng_us,
+#          sub_data$lat_us,
+#          col = 'darkgreen',
+#          pch = 17)
+#   title(main = paste0(sub_data$name, '\n',
+#                       'U.S.: ', sub_data$Unidade_Sanitaria))  
+#   dev.off()
+# }
